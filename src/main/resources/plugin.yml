@@ -1,0 +1,12 @@
+name: NeoCardGames
+version: ${project.version}
+main: yoneyone.yone.yo.neocardgames.NeoCardGames
+commands:
+  neo:
+    description: ネオカードゲームメインコマンド
+    permission: neo.player
+    permission-message: You don't have <permission>
+  neop:
+    description: ネオカードゲーム管理コマンド
+    permission: neo.player
+    permission-message: You don't have <permission>

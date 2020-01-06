@@ -1,0 +1,6 @@
+neobattle: true
+carddurability:
+  normal: 802
+  rare: 803
+  legend: 804
+  event: 805
