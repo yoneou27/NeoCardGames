@@ -1,4 +1,5 @@
 neobattle: true
+packdurability: 806
 carddurability:
   normal: 802
   rare: 803

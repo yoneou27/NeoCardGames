@@ -1,0 +1,28 @@
+#nameとrarity、seriesは必須です
+#cardのフォルダの中にあるreadme.txtも確認してください
+#loreの値名は数字で書いて下さい
+#name: §l三色団子
+#lore:
+#  1: §fおいしい団子
+#  2: §f食べると幸せになれる
+#now:
+#  heal: 2
+#  reduction: 1
+#  draw: 1
+#next:
+#  heal: 1
+#以下カードパック
+#name: §7§lスタンダード§r§l初期セット
+#amount: 5
+#lore:
+#  1: §fスタンダードな初期セットのパック
+#series:
+#  1: 初期セット
+#default:
+#  ノーマル: 700
+#  レア: 260
+#  スーパーレア: 30
+#  レジェンド: 9
+#  シークレット: 1
+#special:
+#  三色団子: 350

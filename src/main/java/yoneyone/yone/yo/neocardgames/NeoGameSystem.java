@@ -264,8 +264,9 @@ public class NeoGameSystem {
                 if (!checkList1.contains(itemStack.getItemMeta().getDisplayName())){
                     checkList1.add(itemStack.getItemMeta().getDisplayName());
                 }else {
-                    CardRarityType rarityType = getCardRarity(itemStack);
-                    if (rarityType.equals(CardRarityType.rare) || rarityType.equals(CardRarityType.legend)){
+                    Card card = getCard(itemStack);
+                    String rarity = card.rarity;
+                    if (rarity.equals("スーパーレア") || rarity.equals("レジェンド") || rarity.equals("シークレット")){//スーパーレア以上の時の処理
                         player.sendMessage(NeoCardGames.prefix +"§l同じカードは2枚までしか入れられません");
                         player.sendMessage(NeoCardGames.prefix +"§lスーパーレア以上のカードは1枚までです");
                         canDeck = false;
@@ -329,16 +330,7 @@ public class NeoGameSystem {
         hoeMeta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);//後で能力隠しも付けます
         hoe.setItemMeta(hoeMeta);
         //レアリティでテクスチャを変える
-        CardRarityType type = getCardRarity(hoe);
-        if (type.equals(CardRarityType.normal)){
-            hoe.setDurability(NeoCardGames.normalCardDurability);
-        }else if (type.equals(CardRarityType.rare)){
-            hoe.setDurability(NeoCardGames.rareCardDurability);
-        }else if (type.equals(CardRarityType.legend)){
-            hoe.setDurability(NeoCardGames.legendCardDurability);
-        }else if (type.equals(CardRarityType.event)){
-            hoe.setDurability(NeoCardGames.eventCardDurability);
-        }
+        hoe.setDurability(card.cardDurability);
         return hoe;
     }
 
@@ -347,13 +339,18 @@ public class NeoGameSystem {
     }
 
     public Card getCard(ItemStack itemStack){
-        if (!itemStack.getType().equals(Material.DIAMOND_HOE)){
+        if (!itemStack.getType().equals(Material.DIAMOND_HOE)) {
+            return null;
+        }
+        String name = itemStack.getItemMeta().getDisplayName();
+        if (name == null){
             return null;
         }
         short durability = itemStack.getDurability();
-        if (durability == NeoCardGames.normalCardDurability){//ノーマル
-            for (Card card: NeoCardGames.normalCards){
-                if (itemStack.getItemMeta().getDisplayName().equals(card.name)){
+        if (durability == NeoCardGames.normalCardDurability || durability == NeoCardGames.rareCardDurability
+                || durability == NeoCardGames.legendCardDurability || durability == NeoCardGames.eventCardDurability){//ノーマル
+            for (Card card: NeoCardGames.cards){
+                if (name.equals(card.name)){
                     List<String> lore = itemStack.getItemMeta().getLore();
                     if (lore != null){//ロールがないカードなんてない
                         if (lore.size() != 0){//長さが0はないけど、一応
@@ -361,67 +358,6 @@ public class NeoGameSystem {
                         }
                     }
                 }
-            }
-        }
-        if (durability == NeoCardGames.rareCardDurability){//レア
-            for (Card card: NeoCardGames.rareCards){
-                if (itemStack.getItemMeta().getDisplayName().equals(card.name)){
-                    List<String> lore = itemStack.getItemMeta().getLore();
-                    if (lore != null){
-                        if (lore.size() != 0){
-                            return card;
-                        }
-                    }
-                }
-            }
-        }
-        if (durability == NeoCardGames.legendCardDurability){//レジェンド
-            for (Card card: NeoCardGames.legendCards){
-                if (itemStack.getItemMeta().getDisplayName().equals(card.name)){
-                    List<String> lore = itemStack.getItemMeta().getLore();
-                    if (lore != null){
-                        if (lore.size() != 0){
-                            return card;
-                        }
-                    }
-                }
-            }
-        }
-        if (durability == NeoCardGames.eventCardDurability){//ノーマル
-            for (Card card: NeoCardGames.eventCards){
-                if (itemStack.getItemMeta().getDisplayName().equals(card.name)){
-                    List<String> lore = itemStack.getItemMeta().getLore();
-                    if (lore != null){
-                        if (lore.size() != 0){
-                            return card;
-                        }
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    public CardRarityType getCardRarity(ItemStack itemStack){
-        String name = itemStack.getItemMeta().getDisplayName();
-        for (Card card:NeoCardGames.normalCards){
-            if (card.name.equals(name)){
-                return CardRarityType.normal;
-            }
-        }
-        for (Card card:NeoCardGames.rareCards){
-            if (card.name.equals(name)){
-                return CardRarityType.rare;
-            }
-        }
-        for (Card card:NeoCardGames.legendCards){
-            if (card.name.equals(name)){
-                return CardRarityType.legend;
-            }
-        }
-        for (Card card:NeoCardGames.eventCards){
-            if (card.name.equals(name)){
-                return CardRarityType.event;
             }
         }
         return null;
@@ -446,7 +382,7 @@ public class NeoGameSystem {
     }
 
     public void startTurn(Player player){
-        Bukkit.getScheduler().runTask(this.neo,() -> {
+        Bukkit.getScheduler().runTaskAsynchronously(this.neo,() -> {
             Battle battle = getBattle(player);
             Player turnPlayer;
             if (battle.isATurn) {
@@ -461,93 +397,122 @@ public class NeoGameSystem {
             battleSystem.draw(turnPlayer);//カードを引く
             NeoBattleSystem.UpdateTread tread = battleSystem.new UpdateTread(battle);
             Bukkit.getScheduler().runTask(this.neo,tread);
-            Bukkit.getScheduler().runTaskAsynchronously(this.neo, () -> {
-                ItemStack nextToNow;
-                Battle battle2 = getBattle(player);
-                if (battle2.isATurn) {
-                    nextToNow = battle2.nextCardA;
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ignored) {
+            }
+            if (battleSystem.gameEndCheck(player)){//もしもデッキ切れ処理で対戦が終了していたら停止する
+                return;
+            }
+            Battle battle2 = getBattle(player);
+            ItemStack permanentToNow;//永続効果
+            if (battle2.isATurn) {
+                permanentToNow = battle2.permanentA;
+            } else {
+                permanentToNow = battle2.permanentB;
+            }
+            if (permanentToNow != null) {//発動する効果があるならば
+                NeoBattleSystem.GameMaster2 gameMaster2 = battleSystem.new GameMaster2(permanentToNow,turnPlayer);
+                gameMaster2.start();
+                try {
+                    gameMaster2.join();
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) {
+                }
+                //使用終了
+                //永続なので消えない
+                Bukkit.getScheduler().runTask(this.neo,tread);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) {
+                }//更新中に次のステップに進まない予防用
+            }
+            ItemStack nextToNow;
+            if (battle2.isATurn) {
+                nextToNow = battle2.nextCardA;
+            } else {
+                nextToNow = battle2.nextCardB;
+            }
+            if (nextToNow != null) {//このターン発動する効果があるならば
+                NeoBattleSystem.GameMaster2 gameMaster2 = battleSystem.new GameMaster2(nextToNow,turnPlayer);
+                gameMaster2.start();
+                try {
+                    gameMaster2.join();
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) {
+                }
+                //使用終了
+                if (getBattle(player).isATurn) {
+                    battle2.nextCardA = null;
                 } else {
-                    nextToNow = battle2.nextCardB;
+                    battle2.nextCardB = null;
                 }
-                if (nextToNow != null) {//このターン発動する効果があるならば
-                    battleSystem.gameMaster2(nextToNow, turnPlayer);
-                    //使用終了
-                    if (getBattle(player).isATurn) {
-                        battle2.nextCardA = null;
-                    } else {
-                        battle2.nextCardB = null;
-                    }
-                    Bukkit.getScheduler().runTask(this.neo,tread);
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException ignored) {
-                    }
-                }
-                battle2.isProcessing = false;//プレイヤーを待っている
-                int turn = battle2.turn;
-                try {
-                    Thread.sleep(30000);
-                } catch (InterruptedException ignored) {
-                }
-                if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {//別のターンもしくは処理中なら終了
+                Bukkit.getScheduler().runTask(this.neo,tread);
+            }
+            battle2.isProcessing = false;//プレイヤーを待っている
+
+            int turn = battle2.turn;
+            try {
+                Thread.sleep(30000);
+            } catch (InterruptedException ignored) {
+            }
+            if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {//別のターンもしくは処理中なら終了
+                return;
+            }
+            battleSendMessage(battle2, NeoCardGames.prefix + "§b§lあと30秒です§kxxxx");
+            try {
+                Thread.sleep(15000);
+            } catch (InterruptedException ignored) {
+            }
+            if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {
+                return;
+            }
+            battleSendMessage(battle2, NeoCardGames.prefix + "§b§lあと15秒です§kxxx");
+            try {
+                Thread.sleep(10000);
+            } catch (InterruptedException ignored) {
+            }
+            if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {
+                return;
+            }
+            battleSendMessage(battle2, NeoCardGames.prefix + "§b§lあと5秒です§kxx");
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException ignored) {
+            }
+            if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {
+                return;
+            }
+            battleSendMessage(battle2, NeoCardGames.prefix + "§b§lあと3秒です§kx");
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException ignored) {
+            }
+            if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {
+                return;
+            }
+            battleSendMessage(battle2, NeoCardGames.prefix + "§b§l時間切れ！");
+            battle2.isProcessing = true;
+            battleSendMessage(battle2, NeoCardGames.prefix + "§b§l反則カウントをします（2回目以降は負け）");
+            //ここに時間切れ処理
+            //反則回数をカウント
+            if (battle2.isATurn) {
+                battle2.offenseA += 1;
+                if (battle2.offenseA >= 2) {//2以上なら反則負け
+                    battleSystem.defeat(turnPlayer);
                     return;
                 }
-                battleSendMessage(battle2, NeoCardGames.prefix + "§b§lあと30秒です§kxxxx");
-                try {
-                    Thread.sleep(15000);
-                } catch (InterruptedException ignored) {
-                }
-                if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {
+            } else {
+                battle2.offenseB += 1;
+                if (battle2.offenseB >= 2) {
+                    battleSystem.defeat(turnPlayer);
                     return;
                 }
-                battleSendMessage(battle2, NeoCardGames.prefix + "§b§lあと15秒です§kxxx");
-                try {
-                    Thread.sleep(10000);
-                } catch (InterruptedException ignored) {
-                }
-                if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {
-                    return;
-                }
-                battleSendMessage(battle2, NeoCardGames.prefix + "§b§lあと5秒です§kxx");
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException ignored) {
-                }
-                if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {
-                    return;
-                }
-                battleSendMessage(battle2, NeoCardGames.prefix + "§b§lあと3秒です§kx");
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException ignored) {
-                }
-                if (getBattle(player) == null || turn != battle2.turn || battle2.isProcessing) {
-                    return;
-                }
-                Bukkit.getScheduler().runTask(this.neo, () -> {
-                    battleSendMessage(battle2, NeoCardGames.prefix + "§b§l時間切れ！");
-                    battle2.isProcessing = true;
-                    battleSendMessage(battle2, NeoCardGames.prefix + "§b§l反則カウントをします（2回目以降は負け）");
-                    //ここに時間切れ処理
-                    //反則回数をカウント
-                    if (battle2.isATurn) {
-                        battle2.offenseA += 1;
-                        if (battle2.offenseA >= 2) {//2以上なら反則負け
-                            battleSystem.defeat(turnPlayer);
-                            return;
-                        }
-                    } else {
-                        battle2.offenseB += 1;
-                        if (battle2.offenseB >= 2) {
-                            battleSystem.defeat(turnPlayer);
-                            return;
-                        }
-                    }
-                    NeoBattleGUI GUI = new NeoBattleGUI(neo);
-                    battleSystem.gameMaster(GUI.createItemStack(Material.STONE_SWORD, "§a§l通常攻撃"), turnPlayer);//通常攻撃をする
-                    battleSystem.turnEnd(turnPlayer);//ターン終了
-                });
-            });
+            }
+            NeoBattleGUI GUI = new NeoBattleGUI(neo);
+            NeoBattleSystem.GameMaster gameMaster = battleSystem.new GameMaster(GUI.createItemStack(Material.STONE_SWORD, "§a§l通常攻撃"), turnPlayer);
+            //通常攻撃をする
+            gameMaster.start();
         });
     }
 }

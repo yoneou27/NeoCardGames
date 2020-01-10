@@ -8,9 +8,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.File;
+import java.io.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class NeoCardGames extends JavaPlugin {
     static final String prefix = "§r[§4Neo§dCard§r]";
@@ -19,10 +21,11 @@ public final class NeoCardGames extends JavaPlugin {
     static short rareCardDurability = 0;
     static short legendCardDurability = 0;
     static short eventCardDurability = 0;
-    static List<Card> normalCards = new ArrayList<>();
-    static List<Card> rareCards = new ArrayList<>();
-    static List<Card> legendCards = new ArrayList<>();
-    static List<Card> eventCards = new ArrayList<>();
+    static List<Card> cards = new ArrayList<>();//すべてのカード
+    static short cardPackDurability = 0;
+    static List<CardPack> cardPacks = new ArrayList<>();//カードパック
+    static List<String> cardSeries = new ArrayList<>();//どのシリーズがあるか
+    final String separator = File.separator;
 
     @Override
     public void onEnable() {
@@ -30,6 +33,8 @@ public final class NeoCardGames extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new NeoListener(this),this);
         NeoConfig config = new NeoConfig(this);
         config.saveDefaultConfig();
+        NeoConfig config2 = new NeoConfig(this,"example_card.yml");
+        config2.saveDefaultConfig();
         reloadConfig();
     }
 
@@ -39,7 +44,7 @@ public final class NeoCardGames extends JavaPlugin {
         if (testConfig == null) {
             Bukkit.getLogger().info("ロードに失敗しました、config.ymlが存在しない可能性があります");
         } else {
-            if (testConfig.contains("neobattle") && testConfig.contains("carddurability")) {
+            if (testConfig.contains("neobattle") && testConfig.contains("carddurability") && testConfig.contains("packdurability")) {
                 //ゲーム開始していいか確認
                 battleStart = testConfig.getBoolean("neobattle");
                 //耐久値の確認初期値
@@ -47,12 +52,17 @@ public final class NeoCardGames extends JavaPlugin {
                 rareCardDurability = (short) testConfig.getInt("carddurability.rare");//レア
                 legendCardDurability = (short) testConfig.getInt("carddurability.legend");//レジェンド
                 eventCardDurability = (short) testConfig.getInt("carddurability.event");//期間限定
+                //カードパック用
+                cardPackDurability = (short) testConfig.getInt("packdurability");
             } else {
                 Bukkit.getLogger().info("config.ymlに不備があります");
+                Bukkit.getLogger().info("プラグインのの機能を停止します");
+                Bukkit.getLogger().info("必ず確認をしてから稼働させてください");
+                battleStart = false;
             }
         }
         //設定ファイルの確認
-        File fileD = new File("plugins\\NeoCardGames");
+        File fileD = new File("plugins"+ separator +"NeoCardGames");
         if (!fileD.exists()) {
             Bukkit.getLogger().info("NeoCardGamesディレクトリが存在しません、作成します");
             if (!fileD.mkdir()) {
@@ -60,166 +70,397 @@ public final class NeoCardGames extends JavaPlugin {
                 return;
             }
         }
-        File fileN = new File("plugins\\NeoCardGames\\normal");
-        File fileR = new File("plugins\\NeoCardGames\\rare");
-        File fileL = new File("plugins\\NeoCardGames\\legend");
-        File fileE = new File("plugins\\NeoCardGames\\event");
-        if (!fileN.exists()) {//存在しなければ
-            if (!fileN.mkdir()) {//生成できなければ
+        File fileC = new File("plugins"+ separator +"NeoCardGames"+ separator +"cards");
+        File fileP = new File("plugins"+ separator +"NeoCardGames"+ separator +"pack");
+        if (!fileC.exists()) {//存在しなければ
+            if (!fileC.mkdir()) {//生成できなければ
                 Bukkit.getLogger().info("NeoCardGamesのコンフィグエラーが発生しました、確認してください");
             }
         }
-        if (!fileR.exists()) {
-            if (!fileR.mkdir()) {
+        if (!fileP.exists()){
+            if (!fileP.mkdir()) {
                 Bukkit.getLogger().info("NeoCardGamesのコンフィグエラーが発生しました、確認してください");
             }
         }
-        if (!fileL.exists()) {
-            if (!fileL.mkdir()) {
-                Bukkit.getLogger().info("NeoCardGamesのコンフィグエラーが発生しました、確認してください");
-            }
-        }
-        if (!fileE.exists()) {
-            if (!fileE.mkdir()) {
-                Bukkit.getLogger().info("NeoCardGamesのコンフィグエラーが発生しました、確認してください");
-            }
-        }
-        File[] listN = fileN.listFiles();
-        File[] listR = fileR.listFiles();
-        File[] listL = fileL.listFiles();
-        File[] listE = fileE.listFiles();
-        if (listN == null || listR == null || listL == null || listE == null) {
-            Bukkit.getLogger().info("plugins\\NeoCardGamesの中身を確認してください、不備がある可能性があります");
+        File[] listC = fileC.listFiles();
+        File[] listP = fileP.listFiles();
+        if (listC == null || listP == null) {
+            Bukkit.getLogger().info("plugins"+ separator +"NeoCardGamesの中身を確認してください、不備がある可能性があります");
             return;
         }
+        //チュートリアルの.txtファイルの出力
+        try {
+            File fileTxt = new File("plugins"+ separator +"NeoCardGames"+ separator +"cards"+ separator +"readme.txt");
+            PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(fileTxt)));
+
+            pw.println("このディレクトリはカードデータファイルの保存のために使います");
+            pw.println("cards"+ separator +"任意の名前のシリーズディレクトリ"+ separator +"ノーマル、レア、スーパーレア、レジェンド、シークレットのいずれかのレアリティディレクトリ"+ separator +"カードデータ.yml");
+            pw.println("というように保存します");
+
+            pw.close();
+        }catch (IOException e){
+            Bukkit.getLogger().info("説明用txtファイルの生成に失敗しました、確認してください");
+        }
         //各カードの確認
-        normalCards.clear();//リセット
-        for (File file : listN) {
-            String path = "normal\\"+ file.getName();
-            Card card = fileToCard(path);
-            if (card == null){
-                continue;
+        //ネオカードゲーム\\カード\\各種シリーズ\\存在するレアリティ\\カード.yml
+        cards.clear();//リセット
+        cardSeries.clear();
+        for (File seriesFile:listC) {
+            if (seriesFile.isDirectory()){//もしもフォルダなら
+                File[] listCS = seriesFile.listFiles();
+                if (listCS == null){
+                    continue;
+                }
+                cardSeries.add(seriesFile.getName());
+                for (File rarityFile:listCS){
+                    if (rarityFile.isDirectory()){//もしもフォルダなら
+                        short cardDurability;
+                        switch (rarityFile.getName()){
+                            case "ノーマル":
+                            case "レア":
+                                cardDurability = normalCardDurability;
+                                break;
+                            case "スーパーレア":
+                            case "レジェンド":
+                                cardDurability = rareCardDurability;
+                                break;
+                            case "シークレット":
+                                cardDurability = legendCardDurability;
+                                break;
+                            case "イベント":
+                                cardDurability = eventCardDurability;
+                                break;
+                            default:
+                                Bukkit.getLogger().info(rarityFile.getPath() +"のレアリティは不正です");
+                                continue;
+                        }
+                        File[] listCSR = rarityFile.listFiles();
+                        if (listCSR == null){
+                            continue;
+                        }
+                        for (File cardFile:listCSR){
+                            if (cardFile.isFile()){//もしもカードデータファイルなら
+                                String path = "cards"+ separator + seriesFile.getName() + separator + rarityFile.getName() + separator + cardFile.getName();
+                                Card card = fileToCard(path);
+                                if (card == null){
+                                    continue;
+                                }
+                                card.fileName = getPreffix(cardFile.getName());//識別用名
+                                boolean isExists = false;
+                                for (Card checkCard:cards){
+                                    if (checkCard.fileName.equals(card.fileName) || checkCard.name.equals(card.name)){
+                                        Bukkit.getLogger().info(path +"のカードと同じファイル名のカードもしくは同じカード名のファイルが既に存在します");
+                                        Bukkit.getLogger().info("バグを防ぐため、このファイルの保存を停止します");
+                                        isExists = true;
+                                        break;
+                                    }
+                                }
+                                if (isExists){//存在するなら
+                                    continue;
+                                }
+                                card.cardDurability = cardDurability;//テクスチャ設定
+                                List<String> lore = card.lore;
+                                if (card.rarity == null){
+                                    card.rarity = rarityFile.getName();
+                                    lore.add("§6["+ card.rarity +"]");
+                                }
+                                card.series = seriesFile.getName();
+                                lore.add("§6["+ card.series +"]");
+                                cards.add(card);
+                            }
+                        }
+                    }
+                }
             }
-            normalCards.add(card);
         }
-        rareCards.clear();
-        for (File file : listR) {
-            String path = "rare\\"+ file.getName();
-            Card card = fileToCard(path);
-            if (card == null){
+        //カードパック読み取り処理
+        cardPacks.clear();//リセット
+        for (File packFile:listP){
+            String path = "pack"+ separator + packFile.getName();
+            CardPack pack = fileToCardPack(path);
+            if (pack == null){
                 continue;
             }
-            rareCards.add(card);
-        }
-        legendCards.clear();
-        for (File file : listL) {
-            String path = "legend\\"+ file.getName();
-            Card card = fileToCard(path);
-            if (card == null){
+            boolean isExists = false;
+            for (CardPack cardPack:cardPacks){
+                if (cardPack.name.equals(pack.name)){
+                    Bukkit.getLogger().info(path +"のカードと同じ名前のカードパックファイルが既に存在します");
+                    Bukkit.getLogger().info("バグを防ぐため、このファイルの保存を停止します");
+                    isExists = true;
+                    break;
+                }
+            }
+            if (isExists){//存在するなら
                 continue;
             }
-            legendCards.add(card);
-        }
-        eventCards.clear();
-        for (File file : listE) {
-            String path = "event\\"+ file.getName();
-            Card card = fileToCard(path);
-            if (card == null){
-                continue;
-            }
-            eventCards.add(card);
+            cardPacks.add(pack);
         }
     }
+
+    public String getPreffix(String fileName) {
+        if (fileName == null) {
+            return null;
+        }
+        int point = fileName.lastIndexOf(".");
+        if (point != -1) {
+            return fileName.substring(0, point);
+        }
+        return fileName;
+    }
 /*コンフィグ記入例（不要な部分は書きません）
-nameとrarityは必須です
+nameは必須です
 loreの値名は数字で書いて下さい
+cards\任意の名前のシリーズディレクトリ\ノーマル、レア、スーパーレア、レジェンド、シークレットのいずれかのレアリティディレクトリ\このファイル.yml
+に置いてください
 
 name: §l三色団子
-rarity: rare
 lore:
   1: §fおいしい団子
   2: §f食べると幸せになれる
 now:
   heal: 2
   reduction: 1
+  draw: 1
 next:
   heal: 1
 */
-    private Card fileToCard(String path){//一つのカードコンフィグから、データを取る
-        NeoConfig config = new NeoConfig(this,path);
+    private Card fileToCard(String path) {//一つのカードコンフィグから、データを取る
+        NeoConfig config = new NeoConfig(this, path);
         FileConfiguration configFile = config.getConfig();
         Card card = new Card();
-        if (!(configFile.contains("name") && configFile.contains("rarity"))){
-            Bukkit.getLogger().info(path +"の必須データに不備があります");
+        if (!(configFile.contains("name"))) {
+            Bukkit.getLogger().info(path + "の必須データに不備があります");
             return null;
         }
         card.name = configFile.getString("name");
-        card.rarity = configFile.getString("rarity");
-        if (configFile.contains("lore")){
+        if (configFile.contains("rarity")) {//レアリティ、未設定の場合ディレクトリのものが設定される
+            card.rarity = configFile.getString("rarity");
+        }
+        if (configFile.contains("lore")) {
             List<String> lore = new ArrayList<>();
-            for (int i = 1;configFile.contains("lore."+ i);i++){//ロール表示
-                lore.add(configFile.getString("lore."+ i));
+            for (int i = 1; configFile.contains("lore." + i); i++) {//ロール表示
+                lore.add(configFile.getString("lore." + i));
             }
-            String rarity = configFile.getString("rarity");
-            lore.add("§6["+ rarity +"]");//レアリティ表示
+            if (card.rarity != null) {
+                lore.add("§6[" + card.rarity + "]");//レアリティ表示
+            }
+            //lore.add("§6["+ card.series +"]");//シリーズ表示
             card.lore = lore;
-        }else {
+        } else {
             List<String> lore = new ArrayList<>();
-            String rarity = configFile.getString("rarity");
-            lore.add("§6["+ rarity +"]");//レアリティ表示
+            if (card.rarity != null) {
+                lore.add("§6[" + card.rarity + "]");//レアリティ表示
+            }
+            //lore.add("§6["+ card.series +"]");//シリーズ表示
             card.lore = lore;
         }
 
-        if (configFile.contains("now")){
+        if (configFile.contains("now")) {
             card.now = true;
-            if (configFile.contains("now.damage")){
-                int amount = configFile.getInt("now.damage",-1);
-                if (amount <= -1){//マイナスの時は-1にする
+            if (configFile.contains("now.damage")) {
+                int amount = configFile.getInt("now.damage");
+                if (amount <= -1) {//マイナスの時は-1にする
                     amount = -1;
                 }
                 card.damageNow = amount;
             }
-            if (configFile.contains("now.heal")){
-                int amount = configFile.getInt("now.heal",-1);
-                if (amount <= -1){
+            if (configFile.contains("now.heal")) {
+                int amount = configFile.getInt("now.heal");
+                if (amount <= -1) {
                     amount = -1;
                 }
                 card.healNow = amount;
             }
-            if (configFile.contains("now.reduction")){
-                int amount = configFile.getInt("now.reduction",-1);
-                if (amount <= -1){
+            if (configFile.contains("now.reduction")) {
+                int amount = configFile.getInt("now.reduction");
+                if (amount <= -1) {
                     amount = -1;
                 }
                 card.reductionNow = amount;
             }
+            if (configFile.contains("now.draw")) {
+                int amount = configFile.getInt("now.draw");
+                if (amount <= -1) {
+                    amount = -1;
+                }
+                card.drawNow = amount;
+            }
         }
-        if (configFile.contains("next")){
+
+        if (configFile.contains("next")) {
             card.next = true;
-            if (configFile.contains("next.damage")){
-                int amount = configFile.getInt("next.damage",-1);
-                if (amount <= -1){
+            if (configFile.contains("next.damage")) {
+                int amount = configFile.getInt("next.damage");
+                if (amount <= -1) {
                     amount = -1;
                 }
                 card.damageNext = amount;
             }
-            if (configFile.contains("next.heal")){
-                int amount = configFile.getInt("next.heal",-1);
-                if (amount <= -1){
+            if (configFile.contains("next.heal")) {
+                int amount = configFile.getInt("next.heal");
+                if (amount <= -1) {
                     amount = -1;
                 }
                 card.healNext = amount;
             }
-            if (configFile.contains("next.reduction")){
-                int amount = configFile.getInt("next.reduction",-1);
-                if (amount <= -1){
+            if (configFile.contains("next.reduction")) {
+                int amount = configFile.getInt("next.reduction");
+                if (amount <= -1) {
                     amount = -1;
                 }
                 card.reductionNext = amount;
             }
+            if (configFile.contains("next.draw")) {
+                int amount = configFile.getInt("next.draw");
+                if (amount <= -1) {
+                    amount = -1;
+                }
+                card.drawNext = amount;
+            }
+        }
+
+        if (configFile.contains("permanent")) {
+            card.permanent = true;
+            if (configFile.contains("permanent.damage")) {
+                int amount = configFile.getInt("permanent.damage");
+                if (amount <= -1) {
+                    amount = -1;
+                }
+                card.damagePermanent = amount;
+            }
+            if (configFile.contains("permanent.heal")) {
+                int amount = configFile.getInt("permanent.heal");
+                if (amount <= -1) {
+                    amount = -1;
+                }
+                card.healPermanent = amount;
+            }
+            if (configFile.contains("permanent.reduction")) {
+                int amount = configFile.getInt("permanent.reduction");
+                if (amount <= -1) {
+                    amount = -1;
+                }
+                card.reductionPermanent = amount;
+            }
+            if (configFile.contains("permanent.draw")) {
+                int amount = configFile.getInt("permanent.draw");
+                if (amount <= -1) {
+                    amount = -1;
+                }
+                card.drawPermanent = amount;
+            }
         }
         //要素追加時にはここに書く
         return card;
+    }
+/*コンフィグ記入例（不要な部分は書きません）
+シリーズのところは、ディレクトリ名を書きます（存在しないと無視されます）
+一つも設定しなかった場合、個別の部分だけ反映されます
+個別で設定するとそのカードの確率が上書きされます
+specialの欄にはファイル名を入れます
+そうすることで個別設定ができます
+何も排出されない設定にした場合
+カードパックを使用できなくなります
+
+name: §7§lスタンダード§r§l初期セット
+amount: 5
+lore:
+  1: §fスタンダードな初期セットのパック
+series:
+  1: 初期セット
+default:
+  ノーマル: 700
+  レア: 260
+  スーパーレア: 30
+  レジェンド: 9
+  シークレット: 1
+special:
+  三色団子: 350
+ */
+    private CardPack fileToCardPack(String path){
+        NeoConfig config = new NeoConfig(this,path);
+        FileConfiguration configFile = config.getConfig();
+        CardPack cardPack = new CardPack();
+        if (!(configFile.contains("name"))){
+            Bukkit.getLogger().info(path +"の必須データに不備があります");
+            return null;
+        }
+        cardPack.name = configFile.getString("name");//名前設定
+        if (configFile.contains("amount")){//排出枚数設定
+            cardPack.cardAmount = configFile.getInt("amount");
+        }
+        List<String> lore = new ArrayList<>();
+        if (configFile.contains("lore")){
+            for (int i = 1;configFile.contains("lore."+ i);i++){//ロール表示
+                lore.add(configFile.getString("lore."+ i));
+            }
+        }
+        cardPack.lore = lore;
+
+        List<String> series = new ArrayList<>();
+        if (configFile.contains("series")){//排出されるシリーズの設定
+            for (int i = 1;configFile.contains("series."+ i);i++){//排出されるシリーズの設定
+                String series1text = configFile.getString("series."+ i);
+                if (!cardSeries.contains(series1text)){//ない場合ははじかれる
+                    Bukkit.getLogger().info(series1text +"というシリーズは存在しません");
+                    continue;
+                }
+                series.add(series1text);
+            }
+        }
+        cardPack.series = series;
+
+        Map<String,Integer> defaultProbability = new HashMap<>();
+        if (configFile.contains("default")){//デフォルトの確率
+            for (String key : configFile.getConfigurationSection("default").getKeys(false)) {
+                int rarityProbability = configFile.getInt("default." + key,0);
+                defaultProbability.put(key,rarityProbability);
+            }
+        }
+        cardPack.defaultProbability = defaultProbability;
+
+        Map<Card,Integer> specialProbability = new HashMap<>();
+        if (configFile.contains("special")){//個別の確率
+            for (String key : configFile.getConfigurationSection("special").getKeys(false)) {
+                int cardProbability = configFile.getInt("special." + key,0);
+                Card card = null;
+                for (Card checkCard:cards){
+                    if (checkCard.fileName.equals(key)){
+                        card = checkCard;
+                        break;
+                    }
+                }
+                if (card == null){
+                    Bukkit.getLogger().info(path +"の"+ key +"というカードは存在しません");
+                    continue;
+                }
+                specialProbability.put(card,cardProbability);
+            }
+        }
+        cardPack.specialProbability = specialProbability;
+
+        int allAmount = 0;
+        List<Card> checkEndCards = new ArrayList<>();
+        for (Card card:cardPack.specialProbability.keySet()){
+            allAmount += cardPack.specialProbability.get(card);//見つけたら追加
+            checkEndCards.add(card);
+        }
+        for (String rarityName:cardPack.defaultProbability.keySet()){//全てのカードの設定
+            int amount = cardPack.defaultProbability.get(rarityName);
+            for (Card card:cards){
+                if (card.rarity.equals(rarityName)){//該当のレアリティならば
+                    if (!checkEndCards.contains(card)){//個別設定されていなければ
+                        allAmount += amount;
+                    }
+                }
+            }
+        }
+        if (allAmount == 0){//もしも何もなかった時の処理
+            Bukkit.getLogger().info(path +"のカードパックは何も排出されない設定です");
+            Bukkit.getLogger().info("使うとエラーメッセージが出て、何も起こりません");
+        }
+        cardPack.allAmount = allAmount;
+        return cardPack;
     }
 
     @Override
@@ -397,11 +638,41 @@ next:
                     return true;
                 }
                 if (args[0].equals("cards")){
-                    player.sendMessage(prefix +"各大区分のカードの枚数を表示します");
-                    player.sendMessage(prefix +"ノーマルカードの数:"+ normalCards.size());
-                    player.sendMessage(prefix +"レアカードの数:"+ rareCards.size());
-                    player.sendMessage(prefix +"レジェンドカードの数:"+ legendCards.size());
-                    player.sendMessage(prefix +"イベントカードの数:"+ eventCards.size());
+                    player.sendMessage(prefix +"各レアリティのカードの枚数を表示します");
+                    int normalCardAmount = 0;
+                    int rareCardAmount = 0;
+                    int sRareCardAmount = 0;
+                    int legendCardAmount = 0;
+                    int secretCardAmount = 0;
+                    int otherCardAmount = 0;
+                    for (Card card:cards){
+                        switch (card.rarity){
+                            case "ノーマル":
+                                normalCardAmount++;
+                                continue;
+                            case "レア":
+                                rareCardAmount++;
+                                continue;
+                            case "スーパーレア":
+                                sRareCardAmount++;
+                                continue;
+                            case "レジェンド":
+                                legendCardAmount++;
+                                continue;
+                            case "シークレット":
+                                secretCardAmount++;
+                                continue;
+                            default:
+                                otherCardAmount++;
+                        }
+                    }
+                    player.sendMessage(prefix +"全てのカードの数:"+ cards.size());
+                    player.sendMessage(prefix +"ノーマルカードの数:"+ normalCardAmount);
+                    player.sendMessage(prefix +"レアカードの数:"+ rareCardAmount);
+                    player.sendMessage(prefix +"スーパーレアカードの数:"+ sRareCardAmount);
+                    player.sendMessage(prefix +"レジェンドカードの数:"+ legendCardAmount);
+                    player.sendMessage(prefix +"シークレットカードの数:"+ secretCardAmount);
+                    player.sendMessage(prefix +"その他カードの数:"+ otherCardAmount);
                     return true;
                 }
                 if (args[0].equals("get")){
@@ -448,7 +719,7 @@ next:
             player.sendMessage("§e/neop <on/off> カードゲームをon/offにしてリロードします");
             player.sendMessage("§e/neop reload コンフィグをリロードします");
             player.sendMessage("§e/neop cards 読み込まれているカードの枚数を確認します");
-            player.sendMessage("§e/neop get 読み込まれているカード一覧のGUIを見れます");
+            player.sendMessage("§e/neop get 読み込まれているカードとカードパック一覧のGUIを見れます");
             player.sendMessage("§e/neop stop <プレイヤー名> このプレイヤーが実行しているゲームを停止します");
             player.sendMessage("§eこのコマンドを使った場合対象のプレイヤーが負けになります");
         }
@@ -468,7 +739,7 @@ class Battle{
     List<ItemStack> handA = new ArrayList<>();//手札
     List<ItemStack> graveyardA = new ArrayList<>();//墓場
     ItemStack nextCardA = null;//次の自分のターン実行されるカード
-    ItemStack permanentA = null;//永続効果
+    ItemStack permanentA = null;//永続効果のカード
     GrantEffect effectA = new GrantEffect();//付与効果
     int HPA = 10;//HP
     int offenseA = 0;//反則回数
@@ -497,27 +768,47 @@ class GrantEffect{
     //相手のターンまでの効果
     int damageReduction = -1;
 }
-enum BattleProcessType{
+enum BattleProcessType{//進行状態
     Before,Preparation,Running,End
 }
-enum CardRarityType{
-    normal,rare,legend,event
-}
 class Card{
+    //カード識別用
+    String fileName = null;
     //以下必須項目
     String name = null;//§l三色団子 など
-    List<String> lore = null;//説明文
-    String rarity = null;//ノーマル、レア、スーパーレア、レジェンド、シークレット の5種類とその他限定ランク
+    String series = null;//初期セット などディレクトリで設定
+    short cardDurability = 0;//テクスチャの耐久値 レアリティで自動設定
+    String rarity = null;//ノーマル、レア、スーパーレア、レジェンド、シークレット、イベント の6種類　ディレクトリで設定
     //以下任意項目
+    List<String> lore = null;//説明文
     //-1の時は発動しないことにします
     //このターン発動する効果 Now
     boolean now = false;//発動するか
     int damageNow = -1;//ダメージ値
     int healNow = -1;//回復値
     int reductionNow = -1;//次の相手のターンダメージ軽減値
+    int drawNow = -1;//ドローする枚数
     //次の自分のターン開始時発動する効果 Next
     boolean next = false;
     int damageNext = -1;
     int healNext = -1;
     int reductionNext = -1;
+    int drawNext = -1;
+    //永続効果（毎ターン開始時実行） permanent
+    boolean permanent = false;
+    int damagePermanent = -1;
+    int healPermanent = -1;
+    int reductionPermanent = -1;
+    int drawPermanent = -1;
+}
+class CardPack{
+    String name = null;//名前
+    List<String> lore = null;//説明文
+    int cardAmount = 1;//排出されるカードの数
+    List<String> series = null;//どのシリーズが出るか
+    //全ての確率の合計値
+    int allAmount = 0;
+    //確率
+    Map<String,Integer> defaultProbability = null;//各カードの未設定時のレアリティの確率（デフォルトでは0）
+    Map<Card,Integer> specialProbability = null;//それぞれのカードの確率を上書き（デフォルトでは0）
 }

@@ -1,16 +1,16 @@
 package yoneyone.yone.yo.neocardgames;
 
+import org.apache.commons.lang.enums.EnumUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 public class NeoBattleGUI {
     NeoCardGames neo;//プラグイン
@@ -65,21 +65,40 @@ public class NeoBattleGUI {
     }
 
     public void battleGUI(Player player,Player spectator){//対戦のメインGUI
-        NeoGameSystem system = new NeoGameSystem(neo);
-        Battle battle = system.getBattle(player);
-        if (battle == null){
+        Inventory inv = updateBattleGUI(null,player,spectator);
+        if (inv == null){
             spectator.sendMessage(NeoCardGames.prefix +"§4エラーが発生しました、GUIを開けません");
             return;
         }
+        spectator.openInventory(inv);
+    }
+
+    public Inventory updateBattleGUI(Inventory inv,Player player){
+        return updateBattleGUI(inv,player,player);
+    }
+
+    public Inventory updateBattleGUI(Inventory inv,Player player,Player spectator){//update用
+        NeoGameSystem system = new NeoGameSystem(neo);
+        Battle battle = system.getBattle(player);
+        if (battle == null){
+            return null;
+        }
         boolean isPlayerA = system.isPlayerA(player);
         boolean isPlayer;
-        Inventory inv;
-        if (player.getName().equals(spectator.getName())){//自分を見ているならば
-            inv = Bukkit.createInventory(null,54,"§lNeoBattleGUI");
-            isPlayer = true;
+        if (inv == null) {
+            if (player.getName().equals(spectator.getName())) {//自分を見ているならば
+                inv = Bukkit.createInventory(null, 54, "§lNeoBattleGUI");
+                isPlayer = true;
+            } else {
+                inv = Bukkit.createInventory(null, 45, "§lNeoSpectatorGUI");
+                isPlayer = false;
+            }
         }else {
-            inv = Bukkit.createInventory(null,45,"§lNeoSpectatorGUI");
-            isPlayer = false;
+            isPlayer = player.getName().equals(spectator.getName());
+        }
+        //リセット
+        for (int i = 0;i < inv.getSize();i++){
+            inv.setItem(i,new ItemStack(Material.AIR));
         }
         ItemStack redFrame = createItemStack(Material.STAINED_GLASS_PANE," ",(short) 14);
         ItemStack greenFrame = createItemStack(Material.STAINED_GLASS_PANE," ",(short) 5);
@@ -142,12 +161,21 @@ public class NeoBattleGUI {
                     if (card.damageNow != -1)cardText.add("§f与えるダメージ"+ card.damageNow);
                     if (card.healNow != -1)cardText.add("§fHP回復"+ card.healNow);
                     if (card.reductionNow != -1)cardText.add("§fダメージ軽減"+ card.reductionNow);
+                    if (card.drawNow != -1)cardText.add("§fドローする枚数"+ card.drawNow);
                 }
                 if (card.next){
                     cardText.add("§f§l次の自分のターン発動する効果");
                     if (card.damageNext != -1)cardText.add("§f与えるダメージ"+ card.damageNext);
                     if (card.healNext != -1)cardText.add("§fHP回復"+ card.healNext);
                     if (card.reductionNext != -1)cardText.add("§fダメージ軽減"+ card.reductionNext);
+                    if (card.drawNext != -1)cardText.add("§fドローする枚数"+ card.drawNext);
+                }
+                if (card.permanent){
+                    cardText.add("§f§l永続効果");
+                    if (card.damagePermanent != -1)cardText.add("§f与えるダメージ"+ card.damagePermanent);
+                    if (card.healPermanent != -1)cardText.add("§fHP回復"+ card.healPermanent);
+                    if (card.reductionPermanent != -1)cardText.add("§fダメージ軽減"+ card.reductionPermanent);
+                    if (card.drawPermanent != -1)cardText.add("§fドローする枚数"+ card.drawPermanent);
                 }
                 inv.setItem(i + 9,createItemStack(Material.SIGN,"§a§l↑↑カード説明↑↑",cardText));
             }
@@ -273,19 +301,21 @@ public class NeoBattleGUI {
         inv.setItem(25,createItemStack(Material.BARRIER,"§4未実装"));
         inv.setItem(26,createItemStack(Material.BARRIER,"§4未実装"));
         //中央に置くもの22
-        if (battle.center != null){
-            inv.setItem(22,battle.center);
+        if (battle.center != null) {
+            inv.setItem(22, battle.center);
         }
-        //開く
-        spectator.openInventory(inv);
+        return inv;
     }
 
     public void cardListMenu(Player player){//カード一覧のメニュー
         Inventory inv = Bukkit.createInventory(null,9,"§lカード一覧メニュー");
         inv.setItem(1,createItemStack(Material.APPLE,"§f§lノーマルカード一覧"));
-        inv.setItem(3,createItemStack(Material.APPLE,"§f§lレアカード一覧"));
-        inv.setItem(5,createItemStack(Material.APPLE,"§f§lレジェンドカード一覧"));
-        inv.setItem(7,createItemStack(Material.APPLE,"§f§lイベントカード一覧"));
+        inv.setItem(2,createItemStack(Material.APPLE,"§f§lレアカード一覧"));
+        inv.setItem(3,createItemStack(Material.APPLE,"§f§lスーパーレアカード一覧"));
+        inv.setItem(4,createItemStack(Material.APPLE,"§f§lレジェンドカード一覧"));
+        inv.setItem(5,createItemStack(Material.APPLE,"§f§lシークレットカード一覧"));
+        inv.setItem(6,createItemStack(Material.APPLE,"§f§lその他カード一覧"));
+        inv.setItem(7,createItemStack(Material.BOOK,"§f§lカードパック一覧"));
         player.openInventory(inv);
     }
 
@@ -294,58 +324,115 @@ public class NeoBattleGUI {
     }
 
     public void cardList(Player player,String type,int page){
-        List<Card> cards;
+        String rarity;
         switch (type) {
             case "§f§lノーマルカード一覧":
-                cards = NeoCardGames.normalCards;
+                rarity = "ノーマル";
                 break;
             case "§f§lレアカード一覧":
-                cards = NeoCardGames.rareCards;
+                rarity = "レア";
+                break;
+            case "§f§lスーパーレアカード一覧":
+                rarity = "スーパーレア";
                 break;
             case "§f§lレジェンドカード一覧":
-                cards = NeoCardGames.legendCards;
+                rarity = "レジェンド";
                 break;
-            case "§f§lイベントカード一覧":
-                cards = NeoCardGames.eventCards;
+            case "§f§lシークレットカード一覧":
+                rarity = "シークレット";
+                break;
+            case "§f§lその他カード一覧":
+                rarity = "その他";//ダミーデータ
+                break;
+            case "§f§lカードパック一覧":
+                rarity = "カードパック";
                 break;
             default:
-                cards = null;
+                rarity = null;
                 break;
         }
-        if (cards == null){
+        if (rarity == null){
             return;
         }
-        Inventory inv = Bukkit.createInventory(null,54,type);
-        //ページチェック
-        if (page <= 0){
-            page = 1;
-        }
-        int allPages = cards.size() / 45 + 1;
-        if (allPages < page){
-            page = allPages;
-        }
-        int openPage = page;
-        Iterator<Card> iterator = cards.iterator();
-        for (int i = 1; i < (allPages + 1); i++) {
-            if (openPage != i){
-                for (int l = 0;l < 45;l++){
-                    iterator.next();
-                }
-                continue;
+        Inventory inv = Bukkit.createInventory(null, 54, type);
+        if (rarity.equals("カードパック")){
+            List<CardPack> cardPacks = new ArrayList<>(NeoCardGames.cardPacks);
+            //ページチェック
+            if (page <= 0) {
+                page = 1;
             }
-            for (int l = 0; l < 45; l++) {
-                if (iterator.hasNext()) {
-                    Card card = iterator.next();
-                    NeoGameSystem system = new NeoGameSystem(neo);
-                    ItemStack itemStack = system.getItemStack(card);
-                    inv.setItem(l,itemStack);
+            int allPages = cardPacks.size() / 45 + 1;
+            if (allPages < page) {
+                page = allPages;
+            }
+            int openPage = page;
+            Iterator<CardPack> iterator = cardPacks.iterator();
+            for (int i = 1; i < (allPages + 1); i++) {
+                if (openPage != i) {
+                    for (int l = 0; l < 45; l++) {
+                        iterator.next();
+                    }
+                    continue;
+                }
+                for (int l = 0; l < 45; l++) {
+                    if (iterator.hasNext()) {
+                        CardPack cardPack = iterator.next();
+                        ItemStack itemStack = createItemStack(Material.DIAMOND_HOE,cardPack.name,cardPack.lore);
+                        itemStack.setDurability(NeoCardGames.cardPackDurability);
+                        ItemMeta itemMeta = itemStack.getItemMeta();
+                        itemMeta.setUnbreakable(true);
+                        itemMeta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
+                        itemStack.setItemMeta(itemMeta);
+                        inv.setItem(l, itemStack);
+                    }
+                }
+                break;
+            }
+        }else {
+            List<Card> cards = new ArrayList<>();
+            for (Card card : NeoCardGames.cards) {
+                if (rarity.equals("その他")) {
+                    if (!(card.rarity.equals("ノーマル") || card.rarity.equals("レア") || card.rarity.equals("スーパーレア") || card.rarity.equals("レジェンド")
+                            || card.rarity.equals("シークレット"))) {
+                        cards.add(card);
+                    }
+                } else {
+                    if (card.rarity.equals(rarity)) {
+                        cards.add(card);
+                    }
                 }
             }
-            break;
+            //ページチェック
+            if (page <= 0) {
+                page = 1;
+            }
+            int allPages = cards.size() / 45 + 1;
+            if (allPages < page) {
+                page = allPages;
+            }
+            int openPage = page;
+            Iterator<Card> iterator = cards.iterator();
+            for (int i = 1; i < (allPages + 1); i++) {
+                if (openPage != i) {
+                    for (int l = 0; l < 45; l++) {
+                        iterator.next();
+                    }
+                    continue;
+                }
+                for (int l = 0; l < 45; l++) {
+                    if (iterator.hasNext()) {
+                        Card card = iterator.next();
+                        NeoGameSystem system = new NeoGameSystem(neo);
+                        ItemStack itemStack = system.getItemStack(card);
+                        inv.setItem(l, itemStack);
+                    }
+                }
+                break;
+            }
         }
         //ページ変化用
-        for (int i = 0; i < 9;i++){
-            inv.setItem(i + 45,createItemStack(Material.STAINED_GLASS_PANE,(i + 1) +"ページへ",(short) i));
+        for (int i = 0; i < 9; i++) {
+            inv.setItem(i + 45, createItemStack(Material.STAINED_GLASS_PANE, (i + 1) + "ページへ", (short) i));
         }
         player.openInventory(inv);
     }
